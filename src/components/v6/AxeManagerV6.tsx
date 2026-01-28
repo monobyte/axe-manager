@@ -5,8 +5,6 @@ import { AgGridReact } from 'ag-grid-react';
 import type { CellValueChangedEvent, RowClassParams, RowStyle } from 'ag-grid-community';
 import { AllCommunityModule } from 'ag-grid-community';
 import { v4 as uuidv4 } from 'uuid';
-import { useBondInstruments } from '../../hooks/useBondInstruments.ts';
-import { useBondAxes } from '../../hooks/useBondAxes.ts';
 import type { Axe, AxeStatus, BondInstrument } from '../../types/index.ts';
 import {
   createColumnDefs,
@@ -15,6 +13,7 @@ import {
   type AxeRow,
   type PendingEdits,
 } from './components/index.ts';
+import { useBondInstruments, useAxeService } from './hooks/index.ts';
 
 export function AxeManagerV6() {
   const { instruments } = useBondInstruments();
@@ -27,7 +26,7 @@ export function AxeManagerV6() {
     unblockAxe,
     deleteAxe,
     setAxesOptimistic,
-  } = useBondAxes();
+  } = useAxeService();
 
   const gridRef = useRef<AgGridReact>(null);
   const [pendingEdits, setPendingEdits] = useState<PendingEdits>({});
