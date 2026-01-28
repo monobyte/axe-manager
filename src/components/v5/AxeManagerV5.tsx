@@ -22,6 +22,8 @@ import {
   IconPlus,
   IconX,
   IconCheck,
+  IconDeviceFloppy,
+  IconArrowBackUp,
 } from '@tabler/icons-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useBondInstruments } from '../../hooks/useBondInstruments.ts';
@@ -34,6 +36,9 @@ interface AxeRow extends Axe {
   _isNew?: boolean;
 }
 
+// Tracks pending edits per existing row: axeId -> { side?, quantity? }
+type PendingEdits = Record<string, { side?: AxeSide; quantity?: number }>;
+
 function ActionsRenderer(
   props: ICellRendererParams<AxeRow> & {
     onPauseResume: (axe: Axe) => void;
@@ -41,6 +46,9 @@ function ActionsRenderer(
     onDelete: (axe: Axe) => void;
     onConfirmNew: (axe: AxeRow) => void;
     onCancelNew: (id: string) => void;
+    onSaveRow: (axe: Axe) => void;
+    onRevertRow: (axe: Axe) => void;
+    pendingEdits: PendingEdits;
   }
 ) {
   const axe = props.data;
@@ -63,6 +71,7 @@ function ActionsRenderer(
     );
   }
 
+  const hasPending = !!props.pendingEdits[axe.id];
   const canPause = axe.status === 'ACTIVE';
   const canResume = axe.status === 'PAUSED';
   const canBlock = axe.status === 'ACTIVE';
@@ -70,29 +79,46 @@ function ActionsRenderer(
 
   return (
     <Group gap={4} wrap="nowrap" align="center" style={{ height: '100%' }}>
-      <Tooltip label={canResume ? 'Resume' : 'Pause'}>
-        <ActionIcon
-          size="sm"
-          color={canResume ? 'green' : 'yellow'}
-          variant="subtle"
-          disabled={!canPause && !canResume}
-          onClick={() => props.onPauseResume(axe)}
-        >
-          {canResume ? <IconPlayerPlay size={16} /> : <IconPlayerPause size={16} />}
-        </ActionIcon>
-      </Tooltip>
+      {hasPending ? (
+        <>
+          <Tooltip label="Save changes">
+            <ActionIcon size="sm" color="green" variant="subtle" onClick={() => props.onSaveRow(axe)}>
+              <IconDeviceFloppy size={16} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Revert changes">
+            <ActionIcon size="sm" color="gray" variant="subtle" onClick={() => props.onRevertRow(axe)}>
+              <IconArrowBackUp size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </>
+      ) : (
+        <>
+          <Tooltip label={canResume ? 'Resume' : 'Pause'}>
+            <ActionIcon
+              size="sm"
+              color={canResume ? 'green' : 'yellow'}
+              variant="subtle"
+              disabled={!canPause && !canResume}
+              onClick={() => props.onPauseResume(axe)}
+            >
+              {canResume ? <IconPlayerPlay size={16} /> : <IconPlayerPause size={16} />}
+            </ActionIcon>
+          </Tooltip>
 
-      <Tooltip label={canUnblock ? 'Unblock' : 'Block'}>
-        <ActionIcon
-          size="sm"
-          color={canUnblock ? 'green' : 'red'}
-          variant="subtle"
-          disabled={!canBlock && !canUnblock}
-          onClick={() => props.onBlockUnblock(axe)}
-        >
-          {canUnblock ? <IconLockOpen size={16} /> : <IconLock size={16} />}
-        </ActionIcon>
-      </Tooltip>
+          <Tooltip label={canUnblock ? 'Unblock' : 'Block'}>
+            <ActionIcon
+              size="sm"
+              color={canUnblock ? 'green' : 'red'}
+              variant="subtle"
+              disabled={!canBlock && !canUnblock}
+              onClick={() => props.onBlockUnblock(axe)}
+            >
+              {canUnblock ? <IconLockOpen size={16} /> : <IconLock size={16} />}
+            </ActionIcon>
+          </Tooltip>
+        </>
+      )}
 
       <Tooltip label="Delete">
         <ActionIcon size="sm" color="red" variant="subtle" onClick={() => props.onDelete(axe)}>
@@ -180,7 +206,7 @@ const InstrumentSearchEditor = forwardRef((
 
 InstrumentSearchEditor.displayName = 'InstrumentSearchEditor';
 
-export function AxeManagerV3() {
+export function AxeManagerV5() {
   const { instruments } = useBondInstruments();
   const {
     axes,
@@ -195,10 +221,20 @@ export function AxeManagerV3() {
 
   const gridRef = useRef<AgGridReact>(null);
   const [newRows, setNewRows] = useState<AxeRow[]>([]);
+  const [pendingEdits, setPendingEdits] = useState<PendingEdits>({});
 
   const rowData = useMemo<AxeRow[]>(() => {
-    return [...newRows, ...axes.map((a) => ({ ...a, _isNew: false }))];
-  }, [newRows, axes]);
+    const displayAxes = axes.map((a) => {
+      const edits = pendingEdits[a.id];
+      return {
+        ...a,
+        side: edits?.side ?? a.side,
+        quantity: edits?.quantity ?? a.quantity,
+        _isNew: false,
+      };
+    });
+    return [...newRows, ...displayAxes];
+  }, [newRows, axes, pendingEdits]);
 
   const addNewRow = useCallback(() => {
     const newRow: AxeRow = {
@@ -292,17 +328,58 @@ export function AxeManagerV3() {
         return;
       }
 
+      const field = event.colDef.field as 'side' | 'quantity';
+      if (field !== 'side' && field !== 'quantity') return;
+
+      const serverAxe = axes.find((a) => a.id === axe.id);
+      if (!serverAxe) return;
+
+      setPendingEdits((prev) => {
+        const existing = prev[axe.id] || {};
+        const updated = { ...existing, [field]: event.newValue };
+
+        const sideVal = updated.side ?? serverAxe.side;
+        const qtyVal = updated.quantity ?? serverAxe.quantity;
+        if (sideVal === serverAxe.side && qtyVal === serverAxe.quantity) {
+          const { [axe.id]: _, ...rest } = prev;
+          return rest;
+        }
+
+        return { ...prev, [axe.id]: updated };
+      });
+    },
+    [axes]
+  );
+
+  const handleSaveRow = useCallback(
+    (axe: Axe) => {
+      const edits = pendingEdits[axe.id];
+      if (!edits) return;
+
+      const serverAxe = axes.find((a) => a.id === axe.id);
+      if (!serverAxe) return;
+
+      const updatedSide = edits.side ?? serverAxe.side;
+      const updatedQty = edits.quantity ?? serverAxe.quantity;
+
       setAxesOptimistic((prev) =>
         prev.map((a) =>
-          a.id === axe.id ? { ...axe, _isNew: undefined, lastUpdate: new Date().toISOString() } as Axe : a
+          a.id === axe.id
+            ? { ...a, side: updatedSide, quantity: updatedQty, lastUpdate: new Date().toISOString() }
+            : a
         )
       );
 
+      setPendingEdits((prev) => {
+        const { [axe.id]: _, ...rest } = prev;
+        return rest;
+      });
+
       createOrUpdateAxe({
         id: axe.id,
-        isin: axe.isin,
-        side: axe.side,
-        quantity: axe.quantity,
+        isin: serverAxe.isin,
+        side: updatedSide,
+        quantity: updatedQty,
       })
         .then(() => {
           notifications.show({ title: 'Success', message: 'Axe updated', color: 'green' });
@@ -311,8 +388,15 @@ export function AxeManagerV3() {
           notifications.show({ title: 'Error', message: err.message || 'Failed to update', color: 'red' });
         });
     },
-    [createOrUpdateAxe, setAxesOptimistic]
+    [pendingEdits, axes, createOrUpdateAxe, setAxesOptimistic]
   );
+
+  const handleRevertRow = useCallback((axe: Axe) => {
+    setPendingEdits((prev) => {
+      const { [axe.id]: _, ...rest } = prev;
+      return rest;
+    });
+  }, []);
 
   const handlePauseResume = useCallback(
     (axe: Axe) => {
@@ -362,6 +446,11 @@ export function AxeManagerV3() {
 
   const handleDelete = useCallback(
     (axe: Axe) => {
+      setPendingEdits((prev) => {
+        const { [axe.id]: _, ...rest } = prev;
+        return rest;
+      });
+
       setAxesOptimistic((prev) => prev.filter((a) => a.id !== axe.id));
 
       deleteAxe(axe.id)
@@ -374,6 +463,8 @@ export function AxeManagerV3() {
     },
     [deleteAxe, setAxesOptimistic]
   );
+
+  const pendingCount = Object.keys(pendingEdits).length;
 
   const columnDefs = useMemo<ColDef<AxeRow>[]>(
     () => [
@@ -394,6 +485,12 @@ export function AxeManagerV3() {
         editable: true,
         cellEditor: 'agSelectCellEditor',
         cellEditorParams: { values: ['Bid', 'Offer'] },
+        cellStyle: (params) => {
+          if (!params.data?._isNew && pendingEdits[params.data.id]?.side !== undefined) {
+            return { backgroundColor: '#fffbeb' };
+          }
+          return null;
+        },
       },
       {
         field: 'quantity',
@@ -403,6 +500,12 @@ export function AxeManagerV3() {
         cellEditor: 'agNumberCellEditor',
         valueFormatter: (params) =>
           params.value != null && params.value !== 0 ? Number(params.value).toLocaleString() : '',
+        cellStyle: (params) => {
+          if (!params.data?._isNew && pendingEdits[params.data.id]?.quantity !== undefined) {
+            return { backgroundColor: '#fffbeb' };
+          }
+          return null;
+        },
       },
       {
         field: 'status',
@@ -422,7 +525,7 @@ export function AxeManagerV3() {
       },
       {
         headerName: 'Actions',
-        width: 130,
+        width: 150,
         sortable: false,
         filter: false,
         cellRenderer: ActionsRenderer,
@@ -432,17 +535,23 @@ export function AxeManagerV3() {
           onDelete: handleDelete,
           onConfirmNew: confirmNewRow,
           onCancelNew: cancelNewRow,
+          onSaveRow: handleSaveRow,
+          onRevertRow: handleRevertRow,
+          pendingEdits,
         },
       },
     ],
     [
       instruments,
+      updateNewRowInstrument,
+      pendingEdits,
       handlePauseResume,
       handleBlockUnblock,
       handleDelete,
       confirmNewRow,
       cancelNewRow,
-      updateNewRowInstrument,
+      handleSaveRow,
+      handleRevertRow,
     ]
   );
 
@@ -453,8 +562,33 @@ export function AxeManagerV3() {
           <Button leftSection={<IconPlus size={16} />} onClick={addNewRow}>
             Add Axe
           </Button>
+          {pendingCount > 0 && (
+            <Button
+              variant="light"
+              color="yellow"
+              size="xs"
+              onClick={() => {
+                for (const axeId of Object.keys(pendingEdits)) {
+                  const axe = axes.find((a) => a.id === axeId);
+                  if (axe) handleSaveRow(axe);
+                }
+              }}
+            >
+              Save All ({pendingCount})
+            </Button>
+          )}
+          {pendingCount > 0 && (
+            <Button
+              variant="light"
+              color="gray"
+              size="xs"
+              onClick={() => setPendingEdits({})}
+            >
+              Revert All
+            </Button>
+          )}
           <Text size="sm" c="dimmed">
-            {axes.length} axes · {newRows.length > 0 ? `${newRows.length} pending` : 'Click cells to edit inline'}
+            {axes.length} axes · {newRows.length} new · {pendingCount} dirty
           </Text>
         </Group>
       </Paper>
@@ -474,6 +608,9 @@ export function AxeManagerV3() {
             getRowStyle={(params) => {
               if (params.data?._isNew) {
                 return { backgroundColor: '#f0f9ff' };
+              }
+              if (params.data && pendingEdits[params.data.id]) {
+                return { backgroundColor: '#fffef5' };
               }
               return undefined;
             }}

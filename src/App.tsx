@@ -7,6 +7,8 @@ import { AxeManagerV1 } from './components/v1/AxeManagerV1.tsx';
 import { AxeManagerV2 } from './components/v2/AxeManagerV2.tsx';
 import { AxeManagerV3 } from './components/v3/AxeManagerV3.tsx';
 import { AxeManagerV4 } from './components/v4/AxeManagerV4.tsx';
+import { AxeManagerV5 } from './components/v5/AxeManagerV5.tsx';
+import { AxeManagerV6 } from './components/v6/AxeManagerV6.tsx';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string | null>('v1');
@@ -37,6 +39,8 @@ export default function App() {
             <Tabs.Tab value="v2">V2 — Inline Edit + Row Actions</Tabs.Tab>
             <Tabs.Tab value="v3">V3 — Fully Inline</Tabs.Tab>
             <Tabs.Tab value="v4">V4 — Atomic Inline Save</Tabs.Tab>
+            <Tabs.Tab value="v5">V5 — Inline Create + Explicit Save</Tabs.Tab>
+            <Tabs.Tab value="v6">V6 — Pinned Create Row</Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="v1" style={{ flex: 1, minHeight: 0, paddingTop: 12 }}>
@@ -50,6 +54,12 @@ export default function App() {
           </Tabs.Panel>
           <Tabs.Panel value="v4" style={{ flex: 1, minHeight: 0, paddingTop: 12 }}>
             {activeTab === 'v4' && <AxeManagerV4 />}
+          </Tabs.Panel>
+          <Tabs.Panel value="v5" style={{ flex: 1, minHeight: 0, paddingTop: 12 }}>
+            {activeTab === 'v5' && <AxeManagerV5 />}
+          </Tabs.Panel>
+          <Tabs.Panel value="v6" style={{ flex: 1, minHeight: 0, paddingTop: 12 }}>
+            {activeTab === 'v6' && <AxeManagerV6 />}
           </Tabs.Panel>
         </Tabs>
       </Box>

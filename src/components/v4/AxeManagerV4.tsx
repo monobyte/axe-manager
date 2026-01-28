@@ -131,11 +131,10 @@ export function AxeManagerV4() {
   const displayData = useMemo(() => {
     return axes.map((axe) => {
       const edits = pendingEdits[axe.id];
-      if (!edits) return axe;
       return {
         ...axe,
-        side: edits.side ?? axe.side,
-        quantity: edits.quantity ?? axe.quantity,
+        side: edits?.side ?? axe.side,
+        quantity: edits?.quantity ?? axe.quantity,
       };
     });
   }, [axes, pendingEdits]);
