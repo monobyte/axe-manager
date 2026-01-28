@@ -6,6 +6,7 @@ import '@mantine/notifications/styles.css';
 import { AxeManagerV1 } from './components/v1/AxeManagerV1.tsx';
 import { AxeManagerV2 } from './components/v2/AxeManagerV2.tsx';
 import { AxeManagerV3 } from './components/v3/AxeManagerV3.tsx';
+import { AxeManagerV4 } from './components/v4/AxeManagerV4.tsx';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string | null>('v1');
@@ -35,6 +36,7 @@ export default function App() {
             <Tabs.Tab value="v1">V1 — Modal CRUD</Tabs.Tab>
             <Tabs.Tab value="v2">V2 — Inline Edit + Row Actions</Tabs.Tab>
             <Tabs.Tab value="v3">V3 — Fully Inline</Tabs.Tab>
+            <Tabs.Tab value="v4">V4 — Atomic Inline Save</Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="v1" style={{ flex: 1, minHeight: 0, paddingTop: 12 }}>
@@ -45,6 +47,9 @@ export default function App() {
           </Tabs.Panel>
           <Tabs.Panel value="v3" style={{ flex: 1, minHeight: 0, paddingTop: 12 }}>
             {activeTab === 'v3' && <AxeManagerV3 />}
+          </Tabs.Panel>
+          <Tabs.Panel value="v4" style={{ flex: 1, minHeight: 0, paddingTop: 12 }}>
+            {activeTab === 'v4' && <AxeManagerV4 />}
           </Tabs.Panel>
         </Tabs>
       </Box>

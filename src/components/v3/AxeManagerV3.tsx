@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import {
   Stack,
   ActionIcon,
@@ -62,35 +62,36 @@ function ActionsRenderer(
     );
   }
 
+  const canPause = axe.status === 'ACTIVE';
+  const canResume = axe.status === 'PAUSED';
+  const canBlock = axe.status === 'ACTIVE';
+  const canUnblock = axe.status === 'BLOCKED';
+
   return (
     <Group gap={4} wrap="nowrap" align="center" style={{ height: '100%' }}>
-      {axe.status === 'PAUSED' ? (
-        <Tooltip label="Resume">
-          <ActionIcon size="sm" color="green" variant="subtle" onClick={() => props.onPauseResume(axe)}>
-            <IconPlayerPlay size={16} />
-          </ActionIcon>
-        </Tooltip>
-      ) : axe.status !== 'BLOCKED' ? (
-        <Tooltip label="Pause">
-          <ActionIcon size="sm" color="yellow" variant="subtle" onClick={() => props.onPauseResume(axe)}>
-            <IconPlayerPause size={16} />
-          </ActionIcon>
-        </Tooltip>
-      ) : null}
+      <Tooltip label={canResume ? 'Resume' : 'Pause'}>
+        <ActionIcon
+          size="sm"
+          color={canResume ? 'green' : 'yellow'}
+          variant="subtle"
+          disabled={!canPause && !canResume}
+          onClick={() => props.onPauseResume(axe)}
+        >
+          {canResume ? <IconPlayerPlay size={16} /> : <IconPlayerPause size={16} />}
+        </ActionIcon>
+      </Tooltip>
 
-      {axe.status === 'BLOCKED' ? (
-        <Tooltip label="Unblock">
-          <ActionIcon size="sm" color="green" variant="subtle" onClick={() => props.onBlockUnblock(axe)}>
-            <IconLockOpen size={16} />
-          </ActionIcon>
-        </Tooltip>
-      ) : axe.status !== 'PAUSED' ? (
-        <Tooltip label="Block">
-          <ActionIcon size="sm" color="red" variant="subtle" onClick={() => props.onBlockUnblock(axe)}>
-            <IconLock size={16} />
-          </ActionIcon>
-        </Tooltip>
-      ) : null}
+      <Tooltip label={canUnblock ? 'Unblock' : 'Block'}>
+        <ActionIcon
+          size="sm"
+          color={canUnblock ? 'green' : 'red'}
+          variant="subtle"
+          disabled={!canBlock && !canUnblock}
+          onClick={() => props.onBlockUnblock(axe)}
+        >
+          {canUnblock ? <IconLockOpen size={16} /> : <IconLock size={16} />}
+        </ActionIcon>
+      </Tooltip>
 
       <Tooltip label="Delete">
         <ActionIcon size="sm" color="red" variant="subtle" onClick={() => props.onDelete(axe)}>
@@ -101,106 +102,117 @@ function ActionsRenderer(
   );
 }
 
-// Custom cell editor for bond instrument search
-import { forwardRef, useImperativeHandle, useEffect } from 'react';
-
+// Custom cell editor for bond instrument search - rendered as a popup
 const InstrumentSearchEditor = forwardRef((props: ICellEditorParams & { instruments: BondInstrument[] }, ref) => {
   const [value, setValue] = useState(props.value || '');
   const [suggestions, setSuggestions] = useState<BondInstrument[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({
     getValue: () => value,
     isCancelAfterEnd: () => false,
+    isPopup: () => true,
+    getPopupPosition: () => 'under' as const,
   }));
 
   useEffect(() => {
-    inputRef.current?.focus();
+    setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
+
+  const instrumentList = props.instruments || [];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setValue(v);
     if (v.length >= 2) {
       const lower = v.toLowerCase();
-      const filtered = props.instruments
-        .filter((i) => i.isin.toLowerCase().includes(lower) || i.description.toLowerCase().includes(lower))
-        .slice(0, 20);
+      const filtered = instrumentList
+        .filter((i: BondInstrument) => i.isin.toLowerCase().includes(lower) || i.description.toLowerCase().includes(lower))
+        .slice(0, 30);
       setSuggestions(filtered);
-      setShowSuggestions(true);
     } else {
       setSuggestions([]);
-      setShowSuggestions(false);
     }
   };
 
   const handleSelect = (instrument: BondInstrument) => {
     setValue(instrument.isin);
-    setShowSuggestions(false);
-    // Store the full instrument data on the row via the node
+    setSuggestions([]);
     if (props.node?.data) {
       props.node.data.isin = instrument.isin;
       props.node.data.description = instrument.description;
       props.node.data.maturity = instrument.maturity;
       props.node.data.issuer = instrument.issuer;
     }
+    // Stop editing after selection
+    setTimeout(() => props.api.stopEditing(), 0);
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
+    <div
+      ref={containerRef}
+      style={{
+        width: 420,
+        background: 'white',
+        border: '1px solid #ddd',
+        borderRadius: 4,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        overflow: 'hidden',
+      }}
+    >
       <input
         ref={inputRef}
         value={value}
         onChange={handleChange}
         style={{
           width: '100%',
-          height: '100%',
           border: 'none',
+          borderBottom: '1px solid #eee',
           outline: 'none',
-          padding: '0 8px',
+          padding: '10px 12px',
           fontSize: '14px',
+          boxSizing: 'border-box',
         }}
-        placeholder="Search ISIN or Description..."
+        placeholder="Type to search by ISIN or description..."
       />
-      {showSuggestions && suggestions.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            maxHeight: 200,
-            overflowY: 'auto',
-            background: 'white',
-            border: '1px solid #ddd',
-            borderRadius: 4,
-            zIndex: 1000,
-            boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-          }}
-        >
-          {suggestions.map((inst) => (
+      <div style={{ maxHeight: 250, overflowY: 'auto' }}>
+        {suggestions.length > 0 ? (
+          suggestions.map((inst: BondInstrument) => (
             <div
               key={inst.isin}
-              onClick={() => handleSelect(inst)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSelect(inst);
+              }}
               style={{
-                padding: '6px 8px',
+                padding: '8px 12px',
                 cursor: 'pointer',
                 fontSize: '13px',
-                borderBottom: '1px solid #f0f0f0',
+                borderBottom: '1px solid #f5f5f5',
               }}
               onMouseEnter={(e) => {
-                (e.target as HTMLDivElement).style.background = '#f5f5f5';
+                (e.currentTarget as HTMLDivElement).style.background = '#f0f5ff';
               }}
               onMouseLeave={(e) => {
-                (e.target as HTMLDivElement).style.background = 'white';
+                (e.currentTarget as HTMLDivElement).style.background = 'white';
               }}
             >
-              <strong>{inst.isin}</strong> — {inst.description}
+              <div style={{ fontWeight: 600 }}>{inst.isin}</div>
+              <div style={{ color: '#666', fontSize: '12px' }}>{inst.description}</div>
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        ) : value.length >= 2 ? (
+          <div style={{ padding: '12px', color: '#999', textAlign: 'center', fontSize: '13px' }}>
+            No instruments found
+          </div>
+        ) : (
+          <div style={{ padding: '12px', color: '#999', textAlign: 'center', fontSize: '13px' }}>
+            Type at least 2 characters to search
+          </div>
+        )}
+      </div>
     </div>
   );
 });
@@ -208,7 +220,7 @@ const InstrumentSearchEditor = forwardRef((props: ICellEditorParams & { instrume
 InstrumentSearchEditor.displayName = 'InstrumentSearchEditor';
 
 export function AxeManagerV3() {
-  const { instruments, loading: instrumentsLoading } = useBondInstruments();
+  const { instruments } = useBondInstruments();
   const {
     axes,
     createOrUpdateAxe,
@@ -223,7 +235,6 @@ export function AxeManagerV3() {
   const gridRef = useRef<AgGridReact>(null);
   const [newRows, setNewRows] = useState<AxeRow[]>([]);
 
-  // Combined row data: new rows at top + existing axes
   const rowData = useMemo<AxeRow[]>(() => {
     return [...newRows, ...axes.map((a) => ({ ...a, _isNew: false }))];
   }, [newRows, axes]);
@@ -259,10 +270,8 @@ export function AxeManagerV3() {
         return;
       }
 
-      // Remove from new rows
       setNewRows((prev) => prev.filter((r) => r.id !== axe.id));
 
-      // Optimistic: add to axes
       const optimisticAxe: Axe = {
         id: axe.id,
         isin: axe.isin,
@@ -286,7 +295,6 @@ export function AxeManagerV3() {
         })
         .catch((err) => {
           notifications.show({ title: 'Error', message: err.message || 'Failed to create axe', color: 'red' });
-          // Rollback
           setAxesOptimistic((prev) => prev.filter((a) => a.id !== axe.id));
         });
     },
@@ -298,13 +306,11 @@ export function AxeManagerV3() {
       const axe = event.data;
       if (!axe) return;
 
-      // If it's a new row, just update local state
       if (axe._isNew) {
         setNewRows((prev) => prev.map((r) => (r.id === axe.id ? { ...axe } : r)));
         return;
       }
 
-      // Optimistic update for existing rows
       setAxesOptimistic((prev) =>
         prev.map((a) =>
           a.id === axe.id ? { ...axe, _isNew: undefined, lastUpdate: new Date().toISOString() } as Axe : a
@@ -397,7 +403,7 @@ export function AxeManagerV3() {
         editable: (params) => !!params.data?._isNew,
         cellEditor: InstrumentSearchEditor,
         cellEditorParams: { instruments },
-        cellEditorPopup: false,
+        cellEditorPopup: true,
       },
       { field: 'description', headerName: 'Description', flex: 1, minWidth: 200 },
       {
