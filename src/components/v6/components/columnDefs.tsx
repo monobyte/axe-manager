@@ -43,6 +43,12 @@ export function createColumnDefs(params: ColumnDefsParams): ColDef<AxeRow>[] {
       cellEditor: InstrumentSearchEditor,
       cellEditorParams: () => ({ instruments, onSelectInstrument }),
       cellEditorPopup: true,
+      cellRenderer: (p: ICellRendererParams<AxeRow>) => {
+        if (p.node?.rowPinned === 'top' && !p.value) {
+          return <span style={{ color: '#adb5bd', fontStyle: 'italic' }}>Select Bond...</span>;
+        }
+        return p.value ?? '';
+      },
     },
     {
       field: 'description',
